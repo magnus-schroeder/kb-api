@@ -7,12 +7,18 @@ export interface knowledge {
   confidenceScore: number;
 }
 
-const CONFIDENCE_THRESHOLD = 0.25;
+const CONFIDENCE_THRESHOLD = process.env.CONFIDENCE_THRESHOLD || 0.2;
 
 function cleanKnowledgeBase() {
   const knowledgeBase = db.get().filter(knowledge => knowledge.confidenceScore >= CONFIDENCE_THRESHOLD);
   db.drop();
   knowledgeBase.forEach(knowledge => db.add(knowledge));
+}
+
+const getKnowledgeBase = (req: Request, res: Response) => {
+  return res.status(200).json({
+    knowledgeBase: db.get(),
+  });
 }
 
 const getRecommendations = (req: Request, res: Response) => {
@@ -22,7 +28,7 @@ const getRecommendations = (req: Request, res: Response) => {
     .map(knowledge => knowledge.acceptedTerm);
 
   return res.status(200).json({
-    message: recommendations,
+    recommendations: recommendations,
   });
 }
 
@@ -31,27 +37,23 @@ const addKnowledge = (req: Request, res: Response) => {
   const acceptedTerm = req.params.acceptedTerm.toLowerCase();
 
   if (!db.get().some(knowledge => knowledge.searchTerm == searchTerm && knowledge.acceptedTerm == acceptedTerm)) {
-    db.add({searchTerm: searchTerm, acceptedTerm: acceptedTerm, confidenceScore: 0.45});
+    db.add({searchTerm: searchTerm, acceptedTerm: acceptedTerm, confidenceScore: -1});
   }
 
   db.get()
     .filter(knowledge => knowledge.searchTerm == searchTerm)
     .forEach(knowledge => {
-      if (knowledge.searchTerm == searchTerm && knowledge.acceptedTerm == acceptedTerm) {
-        if (knowledge.confidenceScore <= 0.95) {
-          knowledge.confidenceScore += 0.05;
-        }
+      if (knowledge.acceptedTerm == acceptedTerm) {
+        knowledge.confidenceScore = knowledge.confidenceScore == -1 ? 0.5 : knowledge.confidenceScore + (1 - knowledge.confidenceScore) * 0.5
       } else {
-        knowledge.confidenceScore -= 0.05;
+        knowledge.confidenceScore = knowledge.confidenceScore - (1 - knowledge.confidenceScore) * 0.5;
       }
     });
 
   cleanKnowledgeBase();
 
-  console.log(db.get());
-
   return res.status(200).json({
-    message: 'knowledge added successfully',
+    message: 'knowledge added',
   });
 }
 
@@ -59,8 +61,8 @@ const deleteKnowledgeBase = (req: Request, res: Response) => {
   db.drop();
 
   return res.status(200).json({
-    message: 'knowledge base deleted successfully',
+    message: 'knowledge base deleted',
   });
 }
 
-export default {getRecommendations, addKnowledge, deleteKnowledgeBase}
+export default {getKnowledgeBase, getRecommendations, addKnowledge, deleteKnowledgeBase}
